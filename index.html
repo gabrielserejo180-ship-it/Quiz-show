@@ -450,8 +450,10 @@ function startHostLobbyPolling(){
   stopPolling();
   App.pollHandle = setInterval(async () => {
     if(App.screen !== 'host-lobby') return;
-    App.hostLobbyPlayers = await fetchLobbyPlayers();
-    render();
+    const fresh = await fetchLobbyPlayers();
+    const changed = JSON.stringify(fresh) !== JSON.stringify(App.hostLobbyPlayers);
+    App.hostLobbyPlayers = fresh;
+    if(changed) render();
   }, 1500);
 }
 
@@ -617,7 +619,6 @@ function startPlayerGamePolling(){
       goto('player-end');
       return;
     }
-    renderIfCurrent(['player-game']);
   }, 1500);
   App.tickHandle = setInterval(() => { App.timerTick++; updateTimerInDOM(); }, 250);
 }
