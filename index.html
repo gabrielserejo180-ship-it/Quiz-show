@@ -534,14 +534,32 @@ async function hostStartGame(){
 function startHostGamePolling(){
   stopPolling();
   App.answerCount = 0;
+  App.allAnswered = false;
   App.pollHandle = setInterval(async () => {
     if(App.state.phase === 'question'){
       const answers = await apiListAnswers(App.roomCode, App.state.currentIndex);
       App.answerCount = answers.length;
       updateAnswerCountInDOM();
+      if(!App.allAnswered && App.state.players.length > 0 && App.answerCount >= App.state.players.length){
+        App.allAnswered = true;
+        freezeHostTimer();
+      }
     }
   }, 1500);
   App.tickHandle = setInterval(() => { App.timerTick++; updateTimerInDOM(); }, 250);
+}
+
+function freezeHostTimer(){
+  if(App.tickHandle){ clearInterval(App.tickHandle); App.tickHandle = null; }
+  const area = document.getElementById('timer-area');
+  if(area){
+    area.innerHTML = `<div style="text-align:center; padding:6px 0 18px;">
+      <div style="font-size:32px;">✅</div>
+      <div class="mono" style="color:var(--green); font-size:13px; margin-top:6px; letter-spacing:2px;">TODOS RESPONDERAM!</div>
+    </div>`;
+  }
+  const revealBtn = document.getElementById('btn-reveal');
+  if(revealBtn) revealBtn.classList.add('pulse');
 }
 
 function renderIfCurrent(screens){
@@ -674,7 +692,8 @@ function startPlayerGamePolling(){
     }
     if(state.phase === 'question' && state.currentIndex !== prevIdx){
       App.hasAnswered = false; App.selectedAnswer = null;
-      render();
+      goto('player-game');
+      return;
     }
     if(state.phase === 'end'){
       stopPolling();
@@ -875,7 +894,7 @@ function renderHostGame(){
       <div class="mono" id="answer-count-badge" style="color:var(--accent2); font-size:13px;">👥 ${App.answerCount||0}/${App.state.players.length} RESPONDERAM</div>
     </div>
     <div class="q-stage">
-      ${timerRingHTML()}
+      <div id="timer-area">${timerRingHTML()}</div>
       <div class="q-text">${esc(q.text)}</div>
       <div class="alt-grid">${alts}</div>
     </div>
