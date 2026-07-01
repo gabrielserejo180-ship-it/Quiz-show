@@ -551,7 +551,7 @@ function startHostGamePolling(){
         triggerAutoReveal();
       }
     }
-  }, 1500);
+  }, 700);
   App.tickHandle = setInterval(() => {
     App.timerTick++;
     updateTimerInDOM();
@@ -740,7 +740,7 @@ function startPlayerGamePolling(){
       goto('player-end');
       return;
     }
-  }, 1500);
+  }, 1000);
   App.tickHandle = setInterval(() => { App.timerTick++; updateTimerInDOM(); }, 250);
 }
 
