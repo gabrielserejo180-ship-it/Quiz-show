@@ -239,6 +239,52 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent2); box-shado
 .footer-note{text-align:center; color:var(--ink-dim); font-size:11px; margin-top:30px; letter-spacing:1px; font-family:var(--font-mono);}
 .answered-badge{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--glass-2); backdrop-filter:blur(14px); border:1px solid var(--accent2); padding:10px 20px; border-radius:999px; font-size:13px; font-family:var(--font-mono); box-shadow:0 0 20px rgba(0,217,255,0.2);}
 
+/* ---------- retoques: botão de som ---------- */
+.speak-btn{
+  position:absolute; top:18px; right:18px; z-index:2;
+  width:44px; height:44px; border-radius:50%; border:1px solid var(--glass-border);
+  background:var(--glass-2); backdrop-filter:blur(10px); color:var(--accent2); font-size:18px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  box-shadow:0 6px 16px rgba(0,0,0,0.25);
+}
+.speak-btn:hover{transform:scale(1.08); border-color:var(--accent2); box-shadow:0 0 20px rgba(0,217,255,0.35);}
+.speak-btn:active{transform:scale(0.95);}
+
+/* ---------- retoques: interruptor (toggle) ---------- */
+.toggle-field{display:flex; flex-direction:column;}
+.toggle-label{display:flex; align-items:center; gap:12px; cursor:pointer; font-size:14px; color:var(--ink); font-weight:500;}
+.toggle-label input{display:none;}
+.toggle-switch{
+  position:relative; width:44px; height:24px; border-radius:999px; background:rgba(255,255,255,0.12);
+  border:1px solid var(--glass-border); flex-shrink:0; transition:background .2s ease;
+}
+.toggle-switch::before{
+  content:''; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%;
+  background:var(--ink-dim); transition:transform .2s ease, background .2s ease;
+}
+.toggle-label input:checked + .toggle-switch{background:linear-gradient(135deg, var(--accent2), var(--accent1)); border-color:transparent;}
+.toggle-label input:checked + .toggle-switch::before{transform:translateX(20px); background:#fff;}
+
+/* ---------- retoques gerais de acabamento ---------- */
+.panel{position:relative;}
+.panel::before{
+  content:''; position:absolute; top:0; left:16px; right:16px; height:1px;
+  background:linear-gradient(90deg, transparent, rgba(0,217,255,0.5), rgba(123,92,250,0.5), transparent);
+}
+.role-card .icon{transition:transform .25s ease;}
+.role-card:hover .icon{transform:scale(1.15) rotate(-4deg);}
+.podium .p{animation:floatIn .6s ease backwards;}
+.podium .p.silver{animation-delay:.05s;}
+.podium .p.gold{animation-delay:.15s;}
+.podium .p.bronze{animation-delay:.25s;}
+@keyframes floatIn{from{opacity:0; transform:translateY(20px);} to{opacity:1; transform:none;}}
+.podium .medal{filter:drop-shadow(0 0 10px rgba(255,255,255,0.25)); animation:medalFloat 2.4s ease-in-out infinite;}
+@keyframes medalFloat{0%,100%{transform:translateY(0);} 50%{transform:translateY(-4px);}}
+.board-row{transition:transform .15s ease, box-shadow .15s ease;}
+.board-row:hover{transform:translateX(3px);}
+.alt-tile .letter{background:linear-gradient(135deg, rgba(0,217,255,0.18), rgba(123,92,250,0.18));}
+
 </style>
 </head>
 <body>
@@ -379,6 +425,41 @@ async function apiListPlayers(code){ const r = await api('listPlayers', { code }
 async function apiSubmitAnswer(code, questionIndex, playerId, answer){ return api('submitAnswer', { code, questionIndex, playerId, answer }); }
 async function apiListAnswers(code, questionIndex){ const r = await api('listAnswers', { code, questionIndex }); return r.answers || []; }
 
+/* ============================================================
+   TEXTO-PARA-VOZ (Web Speech API do navegador — sem login, sem custo)
+   ============================================================ */
+let cachedPtVoice = null;
+if('speechSynthesis' in window){
+  const pickVoice = () => {
+    const voices = window.speechSynthesis.getVoices();
+    cachedPtVoice = voices.find(v => v.lang === 'pt-BR') || voices.find(v => v.lang && v.lang.startsWith('pt')) || null;
+  };
+  pickVoice();
+  window.speechSynthesis.onvoiceschanged = pickVoice;
+}
+
+function speakText(text){
+  if(!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'pt-BR';
+  utter.rate = 0.98;
+  utter.pitch = 1;
+  if(cachedPtVoice) utter.voice = cachedPtVoice;
+  window.speechSynthesis.speak(utter);
+}
+
+function stopSpeaking(){
+  if('speechSynthesis' in window) window.speechSynthesis.cancel();
+}
+
+function speakQuestion(q){
+  if(!q) return;
+  const text = q.text + '. Alternativa A: ' + q.options.A + '. Alternativa B: ' + q.options.B +
+    '. Alternativa C: ' + q.options.C + '. Alternativa D: ' + q.options.D + '.';
+  speakText(text);
+}
+
 async function testConnection(){
   const box = document.getElementById('connection-test-result');
   if(!box) return;
@@ -439,6 +520,7 @@ const App = {
   pollHandle: null,
   tickHandle: null,
   autoAdvanceHandle: null,
+  autoSpeak: true,
   autoAdvanceRemaining: 0,
   autoRevealTriggered: false,
   allAnswered: false,
@@ -534,6 +616,7 @@ async function hostStartGame(){
   if(r1.error) console.error('Falha ao salvar estado:', r1.error);
   startHostGamePolling();
   goto('host-game');
+  if(App.autoSpeak) speakQuestion(App.state.questions[App.state.currentIndex]);
 }
 
 function startHostGamePolling(){
@@ -564,6 +647,7 @@ function startHostGamePolling(){
 function triggerAutoReveal(){
   if(App.autoRevealTriggered) return;
   App.autoRevealTriggered = true;
+  stopSpeaking();
   freezeHostTimer();
   hostRevealAnswer();
 }
@@ -668,6 +752,7 @@ async function hostNextQuestion(){
   if(r1.error) console.error('Falha ao salvar estado:', r1.error);
   startHostGamePolling();
   goto('host-game');
+  if(App.autoSpeak) speakQuestion(App.state.questions[App.state.currentIndex]);
 }
 
 function stopPolling(){
@@ -875,6 +960,14 @@ function renderHostSetup(){
         <input type="number" id="cfg-reveal-time" value="8" min="3" max="30">
         <p class="helper">O jogo passa pra próxima pergunta sozinho, sem precisar clicar.</p>
       </div>
+      <div class="field toggle-field">
+        <label class="toggle-label">
+          <input type="checkbox" id="cfg-autospeak" checked>
+          <span class="toggle-switch"></span>
+          <span>🔊 Ler as perguntas em voz alta automaticamente</span>
+        </label>
+        <p class="helper">Usa a voz do próprio navegador — funciona sem login, sem custo.</p>
+      </div>
       <div class="btn-row">
         <button class="btn wide" id="btn-create-room" ${App.loading?'disabled':''}>
           ${App.loading ? 'Gerando perguntas com IA...' : 'Gerar perguntas e criar sala'}
@@ -941,6 +1034,7 @@ function renderHostGame(){
     <div class="q-stage">
       <div id="timer-area">${timerRingHTML()}</div>
       <div class="q-text">${esc(q.text)}</div>
+      <button class="speak-btn" id="btn-speak" title="Ouvir a pergunta">🔊</button>
       <div class="alt-grid">${alts}</div>
     </div>
     <div class="footer-note">SALA ${App.roomCode} · REVELA AUTOMATICAMENTE QUANDO O TEMPO ACABAR OU TODOS RESPONDEREM</div>
@@ -1261,8 +1355,10 @@ function attachHandlers(){
     const count = parseInt(document.getElementById('cfg-count').value) || 10;
     const time = parseInt(document.getElementById('cfg-time').value) || 20;
     const revealTime = parseInt(document.getElementById('cfg-reveal-time').value) || 8;
+    const autoSpeak = document.getElementById('cfg-autospeak').checked;
     if(!theme){ App.aiError = 'Digite um tema para a IA gerar as perguntas.'; render(); return; }
     const teams = App.setupTeams.map(t => t.trim()).filter(Boolean);
+    App.autoSpeak = autoSpeak;
     hostCreateRoom({ mode, theme, questionCount: count, timeLimit: time, revealDuration: revealTime, teams });
   };
 
@@ -1271,6 +1367,8 @@ function attachHandlers(){
   if(startBtn) startBtn.onclick = () => hostStartGame();
 
   // host-game e host-reveal agora avançam sozinhos (sem botões manuais)
+  const speakBtn = document.getElementById('btn-speak');
+  if(speakBtn) speakBtn.onclick = () => speakQuestion(App.state.questions[App.state.currentIndex]);
 
   // player join
   const lookupBtn = document.getElementById('btn-lookup');
