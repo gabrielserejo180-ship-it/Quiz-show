@@ -257,10 +257,6 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent2); box-shado
   let particles = [];
   const colors = ['123,92,250', '0,217,255', '255,61,154'];
 
-  function resize(){
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-  }
   function makeParticles(){
     const count = Math.min(60, Math.floor(window.innerWidth / 22));
     particles = Array.from({length: count}, () => ({
@@ -304,8 +300,33 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent2); box-shado
     }
     requestAnimationFrame(step);
   }
-  resize(); makeParticles();
-  window.addEventListener('resize', () => { resize(); makeParticles(); });
+
+  // primeira montagem
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  makeParticles();
+
+  // resize: só reage a mudanças reais de largura (evita "flash" quando a
+  // barra de endereço do celular aparece/some, que só muda a altura),
+  // e reaproveita as partículas existentes em vez de recriar tudo.
+  let lastWidth = window.innerWidth;
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const newW = window.innerWidth, newH = window.innerHeight;
+      const widthChanged = Math.abs(newW - lastWidth) > 40;
+      canvas.width = newW;
+      canvas.height = newH;
+      if(widthChanged){
+        lastWidth = newW;
+        makeParticles();
+      }else{
+        particles.forEach(p => { p.x = Math.min(p.x, canvas.width); p.y = Math.min(p.y, canvas.height); });
+      }
+    }, 250);
+  });
+
   requestAnimationFrame(step);
 })();
 
@@ -331,7 +352,7 @@ document.addEventListener('click', function(ev){
 /* ============================================================
    CONFIGURAÇÃO — cole aqui a URL do seu Apps Script (termina em /exec)
    ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxk8a8AVntVrYJKXdcWoMqC_uZ7IMDYM3lU-oyOKveyaTcrPB74w-BAknZ5kByk3cvAzg/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz2qme3PjU3dnn5InlzMzZQiZo64jzjYPegS5l2BwNvl9tKQF19FeYAeHiROSxSjtWQxQ/exec';
 
 /* ============================================================
    BACKEND HELPERS (Google Apps Script + Google Sheets)
@@ -357,6 +378,42 @@ async function apiJoinPlayer(code, player){ return api('joinPlayer', { code, pla
 async function apiListPlayers(code){ const r = await api('listPlayers', { code }); return r.players || []; }
 async function apiSubmitAnswer(code, questionIndex, playerId, answer){ return api('submitAnswer', { code, questionIndex, playerId, answer }); }
 async function apiListAnswers(code, questionIndex){ const r = await api('listAnswers', { code, questionIndex }); return r.answers || []; }
+
+async function testConnection(){
+  const box = document.getElementById('connection-test-result');
+  if(!box) return;
+  box.innerHTML = '<span class="mono" style="color:var(--ink-dim);">Testando...</span>';
+  if(!GAS_URL || GAS_URL.indexOf('COLE_AQUI') === 0){
+    box.innerHTML = '<span class="mono" style="color:var(--red);">✗ GAS_URL não configurada no arquivo.</span>';
+    return;
+  }
+  // 1) o servidor responde? (GET simples, testa doGet)
+  try{
+    const resp = await fetch(GAS_URL);
+    const data = await resp.json();
+    if(!data || data.ok !== true){
+      box.innerHTML = '<span class="mono" style="color:var(--red);">✗ Servidor respondeu algo inesperado: '+esc(JSON.stringify(data))+'</span>';
+      return;
+    }
+  }catch(e){
+    box.innerHTML = '<span class="mono" style="color:var(--red);">✗ Não consegui alcançar o servidor: '+esc(e.message)+'</span>';
+    return;
+  }
+  // 2) o backend consegue escrever/ler na planilha e gerar perguntas?
+  const testCode = 'TEST';
+  const testState = { code: testCode, mode:'individual', theme:'teste', timeLimit:10, teams:[], questions:[], currentIndex:-1, phase:'lobby', questionStartTime:null, players:[], scores:{}, lastRoundResults:null, createdAt: Date.now() };
+  const createR = await apiCreateRoom(testCode, testState);
+  if(createR.error){
+    box.innerHTML = '<span class="mono" style="color:var(--red);">✗ Erro ao gravar na planilha: '+esc(createR.error)+'</span>';
+    return;
+  }
+  const readBack = await apiGetState(testCode);
+  if(!readBack){
+    box.innerHTML = '<span class="mono" style="color:var(--red);">✗ Gravou mas não consegui ler de volta. Confira se o script está vinculado à planilha certa.</span>';
+    return;
+  }
+  box.innerHTML = '<span class="mono" style="color:var(--green);">✓ Conexão e planilha funcionando! (a geração de perguntas por IA não foi testada aqui — teste criando uma sala de verdade)</span>';
+}
 
 function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : 'p-'+Date.now()+'-'+Math.random().toString(36).slice(2)); }
 function roomCode(){ return String(Math.floor(1000 + Math.random()*9000)); }
@@ -424,7 +481,8 @@ async function hostCreateRoom(cfg){
       questionStartTime: null, players: [], scores: {}, lastRoundResults: null,
       createdAt: Date.now()
     };
-    await apiCreateRoom(code, state);
+    const createResult = await apiCreateRoom(code, state);
+    if(createResult.error){ throw new Error(createResult.error); }
     App.roomCode = code;
     App.state = state;
     App.role = 'host';
@@ -467,7 +525,8 @@ async function hostStartGame(){
   App.state.phase = 'question';
   App.state.questionStartTime = Date.now();
   App.state.lastRoundResults = null;
-  await apiUpdateState(App.roomCode, App.state);
+  const r1 = await apiUpdateState(App.roomCode, App.state);
+  if(r1.error) console.error('Falha ao salvar estado:', r1.error);
   startHostGamePolling();
   goto('host-game');
 }
@@ -529,7 +588,8 @@ async function hostRevealAnswer(){
 
   App.state.lastRoundResults = results;
   App.state.phase = 'reveal';
-  await apiUpdateState(App.roomCode, App.state);
+  const r2 = await apiUpdateState(App.roomCode, App.state);
+  if(r2.error) console.error('Falha ao salvar estado:', r2.error);
   goto('host-reveal');
 }
 
@@ -537,7 +597,8 @@ async function hostNextQuestion(){
   const nextIdx = App.state.currentIndex + 1;
   if(nextIdx >= App.state.questions.length){
     App.state.phase = 'end';
-    await apiUpdateState(App.roomCode, App.state);
+    const r3 = await apiUpdateState(App.roomCode, App.state);
+    if(r3.error) console.error('Falha ao salvar estado:', r3.error);
     stopPolling();
     goto('host-end');
     return;
@@ -546,7 +607,8 @@ async function hostNextQuestion(){
   App.state.phase = 'question';
   App.state.questionStartTime = Date.now();
   App.state.lastRoundResults = null;
-  await apiUpdateState(App.roomCode, App.state);
+  const r1 = await apiUpdateState(App.roomCode, App.state);
+  if(r1.error) console.error('Falha ao salvar estado:', r1.error);
   startHostGamePolling();
   goto('host-game');
 }
@@ -697,6 +759,10 @@ function renderLanding(){
         <h3>JOGADOR</h3>
         <p>Entre com o código da sala e responda pelo celular.</p>
       </div>
+    </div>
+    <div style="text-align:center; margin-top:30px;">
+      <button class="link" id="btn-test-connection" type="button">🔧 Testar conexão com o servidor</button>
+      <div id="connection-test-result" style="margin-top:10px; font-size:13px;"></div>
     </div>
     <div class="footer-note">GS TECH SOLUTIONS · SISTEMA DE GESTÃO DE PARTIDAS</div>
   </div>`;
@@ -1102,6 +1168,8 @@ function attachHandlers(){
   const root = document.getElementById('root');
 
   root.querySelectorAll('[data-action="go-host-setup"]').forEach(el => el.onclick = () => { App.setupTeams=['Equipe A','Equipe B']; goto('host-setup'); });
+  const testBtn = document.getElementById('btn-test-connection');
+  if(testBtn) testBtn.onclick = () => testConnection();
   root.querySelectorAll('[data-action="go-player-join"]').forEach(el => el.onclick = () => { App.foundRoom=null; App.joinError=null; goto('player-join'); });
   root.querySelectorAll('[data-action="go-landing"]').forEach(el => el.onclick = () => { stopPolling(); App.foundRoom=null; goto('landing'); });
 
