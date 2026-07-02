@@ -294,8 +294,6 @@ select option{ color:#1a1a2e; background:#ffffff; }
 </head>
 <body>
 <canvas id="bg-canvas"></canvas>
-<div id="bg-glow"></div>
-<canvas id="bg-canvas"></canvas>
 <div id="root"></div>
 
 <script>
@@ -682,10 +680,6 @@ function freezeHostTimer(){
   }
 }
 
-function renderIfCurrent(screens){
-  if(screens.includes(App.screen)) render();
-}
-
 function updateTimerInDOM(){
   if(App.screen !== 'host-game' && App.screen !== 'player-game') return;
   if(!App.state || !App.state.questionStartTime) return;
@@ -854,23 +848,6 @@ async function playerAnswer(letter){
   App.selectedAnswer = letter;
   render();
   await apiSubmitAnswer(App.roomCode, App.state.currentIndex, App.playerId, letter);
-}
-
-function watchPlayerReveal(){
-  stopPolling();
-  App.pollHandle = setInterval(async () => {
-    const state = await apiGetState(App.roomCode);
-    if(!state) return;
-    const prevIdx = App.state.currentIndex, prevPhase = App.state.phase;
-    App.state = state;
-    if(state.phase === 'question' && (state.currentIndex !== prevIdx)){
-      App.hasAnswered = false; App.selectedAnswer = null;
-      startPlayerGamePolling();
-      goto('player-game');
-      return;
-    }
-    if(state.phase === 'end'){ stopPolling(); goto('player-end'); return; }
-  }, 1500);
 }
 
 /* ============================================================
