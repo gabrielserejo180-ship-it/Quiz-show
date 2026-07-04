@@ -406,7 +406,7 @@ document.addEventListener('click', function(ev){
 /* ============================================================
    CONFIGURAÇÃO — cole aqui a URL do seu Apps Script (termina em /exec)
    ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyyJjrtaDPndJ7Tu-ApAshS8RkMQy4zM_-gzN0geM1GRcrJm5M_AY2i61RtKhQZL9S5/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwKGdvUbm6v7Ny9FApCXnKcOZa5VHBDQUBF-0fDfqLBAJPFZSd2d-lNkVnWKFlne6TAGg/exec';
 
 /* ============================================================
    BACKEND HELPERS (Google Apps Script + Google Sheets)
@@ -492,20 +492,20 @@ async function testConnection(){
     box.innerHTML = '<span class="mono" style="color:var(--red);">✗ Não consegui alcançar o servidor: '+esc(e.message)+'</span>';
     return;
   }
-  // 2) o backend consegue escrever/ler na planilha e gerar perguntas?
+  // 2) o backend consegue escrever/ler no armazenamento temporário?
   const testCode = 'TEST';
   const testState = { code: testCode, mode:'individual', theme:'teste', timeLimit:10, teams:[], questions:[], currentIndex:-1, phase:'lobby', questionStartTime:null, players:[], scores:{}, lastRoundResults:null, createdAt: Date.now() };
   const createR = await apiCreateRoom(testCode, testState);
   if(createR.error){
-    box.innerHTML = '<span class="mono" style="color:var(--red);">✗ Erro ao gravar na planilha: '+esc(createR.error)+'</span>';
+    box.innerHTML = '<span class="mono" style="color:var(--red);">✗ Erro ao gravar: '+esc(createR.error)+'</span>';
     return;
   }
   const readBack = await apiGetState(testCode);
   if(!readBack){
-    box.innerHTML = '<span class="mono" style="color:var(--red);">✗ Gravou mas não consegui ler de volta. Confira se o script está vinculado à planilha certa.</span>';
+    box.innerHTML = '<span class="mono" style="color:var(--red);">✗ Gravou mas não consegui ler de volta. Tente reimplantar o Apps Script.</span>';
     return;
   }
-  box.innerHTML = '<span class="mono" style="color:var(--green);">✓ Conexão e planilha funcionando! (a geração de perguntas por IA não foi testada aqui — teste criando uma sala de verdade)</span>';
+  box.innerHTML = '<span class="mono" style="color:var(--green);">✓ Conexão e armazenamento funcionando! (a geração de perguntas por IA não foi testada aqui — teste criando uma sala de verdade)</span>';
 }
 
 function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : 'p-'+Date.now()+'-'+Math.random().toString(36).slice(2)); }
